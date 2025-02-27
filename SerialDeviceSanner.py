@@ -3,7 +3,6 @@ import glob
 import serial
 import cv2
 import time
-from PySide6.QtCore import QObject
 import serial.tools
 import serial.tools.list_ports
 from ConstVariable import *
@@ -11,7 +10,7 @@ import os
 import sys
 
 
-class DevicePortScanner(QObject):
+class DevicePortScanner():
 
     def __init__(self):
         super().__init__()
@@ -22,6 +21,8 @@ class DevicePortScanner(QObject):
         self.um982_serial_number = GPS.serial_number
         self.imu_serial_number = IMU.serial_number
         self.ultrasonic_serial_number = ULTRASONIC.serial_number
+        self.base_serial_number = BASE_STATION.serial_number
+        self.base_description = BASE_STATION.description
         self.ports = self.list_serial_ports()
 
     def refresh(self):
@@ -63,16 +64,16 @@ class DevicePortScanner(QObject):
 
         ports = serial.tools.list_ports.comports()
         # result = []
-        for port in ports:
-            print(f"Device: {port.device}")
-            print(f"Name: {port.name}")
-            print(f"Description: {port.description}")
-            print(f"Manufacturer: {port.manufacturer}")
-            print(f"Serial Number: {port.serial_number}")
-            print(f"Location: {port.location}")
-            print(f"Vendor ID: {port.vid if port.vid else 'Unknown'}")
-            print(f"Product ID: {port.pid if port.pid else 'Unknown'}")
-            print("-" * 40)
+        # for port in ports:
+        #     print(f"Device: {port.device}")
+        #     print(f"Name: {port.name}")
+        #     print(f"Description: {port.description}")
+        #     print(f"Manufacturer: {port.manufacturer}")
+        #     print(f"Serial Number: {port.serial_number}")
+        #     print(f"Location: {port.location}")
+        #     print(f"Vendor ID: {port.vid if port.vid else 'Unknown'}")
+        #     print(f"Product ID: {port.pid if port.pid else 'Unknown'}")
+        #     print("-" * 40)
         # try:
         #     s = serial.Serial(port)
         #     s.close()
@@ -179,6 +180,11 @@ class DevicePortScanner(QObject):
                 return port.device
         return None
 
+    def find_base_port(self):
+        for port in self.ports:
+            if port.description == self.base_description and port.serial_number == self.base_serial_number:
+                return port.device
+        return None
 
 if __name__ == "__main__":
     scanner = DevicePortScanner()
@@ -186,6 +192,6 @@ if __name__ == "__main__":
     print(f"imu >> {scanner.find_imu_port()}")
     print(f"um982 >> {scanner.find_um982_port()}")
     print(f"s21c >> {scanner.find_s21c_port()}")
-
+    print(f"base >> {scanner.find_base_port()}")
     # print("xencoder: ", scanner.find_encoder_x_port())
     # print("deltax", scanner.find_delta_x_port())
