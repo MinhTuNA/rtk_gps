@@ -60,9 +60,9 @@ def ECEF_to_WGS84(x=None, y=None, z=None, tolerance=1e-12):
 
 
 if __name__ == "__main__":
-    x_cm = -191916192
-    y_cm = 582136804
-    z_cm = 175738933
+    x_cm = -191916128
+    y_cm = 582136888
+    z_cm = 175738897
 
     # Chuyển sang mét
     x = (x_cm + (-44 * 0.01)) * 0.01
@@ -70,8 +70,8 @@ if __name__ == "__main__":
     z = (z_cm + (-1 * 0.01)) * 0.01
 
     lat, lon, alt = ECEF_to_WGS84(x, y, z)
-    print(f"Vĩ độ: {lat:.6f}°")
-    print(f"Kinh độ: {lon:.6f}°")
+    print(f"Vĩ độ: {lat:.8f}°")
+    print(f"Kinh độ: {lon:.8f}°")
     print(f"Độ cao: {alt} m")
 
     # lat = 16.100324

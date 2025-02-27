@@ -25,16 +25,12 @@ def parse_ubx_message(buffer):
 
     buffer là một bytearray.
     """
-    # Tìm vị trí của header UBX (0xB5, 0x62)
     header_index = buffer.find(b'\xB5\x62')
     if header_index == -1:
-        # Không tìm thấy header => xóa hết buffer
         return None, bytearray()
-    # Nếu header không ở đầu buffer, loại bỏ phần trước header
     if header_index > 0:
         buffer = buffer[header_index:]
 
-    # Đảm bảo có đủ 6 byte để đọc header, msg_class, msg_id, và length
     if len(buffer) < 6:
         return None, buffer
 
@@ -42,23 +38,17 @@ def parse_ubx_message(buffer):
     msg_id = buffer[3]
     length = buffer[4] | (buffer[5] << 8)  # Đọc độ dài payload (little-endian)
 
-    # header (6 byte) + payload + checksum (2 byte)
     total_length = 6 + length + 2
     if len(buffer) < total_length:
-        # Chưa đủ dữ liệu cho một message hoàn chỉnh
         return None, buffer
 
-    # Lấy toàn bộ message
     message = buffer[:total_length]
-    # Tính checksum trên phần dữ liệu từ Message Class đến cuối payload
     ck_a, ck_b = calculate_checksum(message[2:6+length])
     if ck_a != message[-2] or ck_b != message[-1]:
         print("Checksum không hợp lệ!")
-        # Nếu checksum không khớp, loại bỏ byte đầu tiên và quay lại xử lý buffer
         return None, buffer[1:]
 
     payload = message[6:6+length]
-    # Xóa bỏ phần message đã xử lý khỏi buffer
     buffer = buffer[total_length:]
     return (msg_class, msg_id, payload), buffer
 
