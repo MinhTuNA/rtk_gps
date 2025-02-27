@@ -27,4 +27,5 @@ class RS485:
 
 class BASE_STATION:
     baudrate = 115200
-    serial_number = ""
+    serial_number = None
+    Description = "u-blox GNSS receiver"
