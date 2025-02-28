@@ -1,18 +1,47 @@
 import serial
-import time
+from PySide6.QtCore import QThread, Signal as pyqtSignal, QObject
+from PySide6.QtSerialPort import QSerialPort
+from ConstVariable import BASE_STATION
 import struct
+import time
 
+class BaseState:
+    DISABLE = 0
+    SURVEY_IN = 1
+    FIXED = 2
 
-class BaseController():
-    def __init__(self, port="dev/ttyUSB0", baudrate=115200):
+class BaseController(QObject):
+    rtcm3_signal = pyqtSignal(bytes)
+    
+    def __init__(self,port):
+        super().__init__()
         self.port = port
-        self.baudrate = baudrate
-        self.base_station_serial = None
+        self.baudrate = BASE_STATION.baudrate
+        self.gps_serial = None
         self.is_connected = False
 
         self.NAV_SVIN_CLASS = 0x01
         self.NAV_SVIN_ID = 0x3B
-
+        self.MSG_OUT_NAV2_SVIN_KEY_ID = [0x23,0x05,0x91,0x20]
+        self.SET = [0x00]
+        self.RESET = [0x00]
+        
+        self.MSG_OUT_RTCM3_1005_USB_KEY_ID = [0xC0,0x02,0x91,0x20] #0x209102c0
+        self.MSG_OUT_RTCM3_1074_USB_KEY_ID = [0x61,0x03,0x91,0x20] #0x20910361
+        self.MSG_OUT_RTCM3_1084_USB_KEY_ID = [0x66,0x03,0x91,0x20] #0x20910366
+        self.MSG_OUT_RTCM3_1124_USB_KEY_ID = [0x70,0x03,0x91,0x20] #0x20910370
+        self.MSG_OUT_RTCM3_1230_USB_KEY_ID = [0x06,0x03,0x91,0x20] #0x20910306
+        
+        self.MSG_OUT_NMEA_GBS_USB_KEY_ID = [0xE0, 0x00, 0x91, 0x20]  # 0x209100e0
+        self.MSG_OUT_NMEA_GLL_USB_KEY_ID = [0xCC, 0x00, 0x91, 0x20]  # 0x209100cc
+        self.MSG_OUT_NMEA_GNS_USB_KEY_ID = [0xB8, 0x00, 0x91, 0x20]  # 0x209100b8
+        self.MSG_OUT_NMEA_GSA_USB_KEY_ID = [0xC2, 0x00, 0x91, 0x20]  # 0x209100c2
+        self.MSG_OUT_NMEA_GSV_USB_KEY_ID = [0xC7, 0x00, 0x91, 0x20]  # 0x209100c7
+        self.MSG_OUT_NMEA_GST_USB_KEY_ID = [0xD6, 0x00, 0x91, 0x20]  # 0x209100d6
+        self.MSG_OUT_NMEA_RMC_USB_KEY_ID = [0xAE, 0x00, 0x91, 0x20]  # 0x209100ae
+        self.MSG_OUT_NMEA_VTG_USB_KEY_ID = [0xB3, 0x00, 0x91, 0x20]  # 0x209100b3
+        self.MSG_OUT_NMEA_GGA_USB_KEY_ID = [0xBD, 0x00, 0x91, 0x20]  # 0x209100bd
+        
         self.DISABLE = [0x00]
         self.MODE_DISABLED = [0x00]
         self.MODE_SURVEY_IN = [0x01]
@@ -36,28 +65,52 @@ class BaseController():
         self.KEY_ID_ECEF_X_HP = [0x06, 0x00, 0x03, 0x20]
         self.KEY_ID_ECEF_Y_HP = [0x07, 0x00, 0x03, 0x20]
         self.KEY_ID_ECEF_Z_HP = [0x08, 0x00, 0x03, 0x20]
-        self.KEY_ID_FIXEDaccuracy_ = [0x0F, 0x00, 0x03, 0x40]
+        self.KEY_ID_FIXED_ACCURACY = [0x0F, 0x00, 0x03, 0x40]
 
         self.RAM = 0x01
         self.FLASH = 0x04
         self.exit_survey_signal = False
         self.is_survey_in_complete = False
-        self.connect()
 
+    def run(self):
+          self.gps_serial = QSerialPort(self.port_name)
+          self.gps_serial.setBaudRate(QSerialPort.BaudRate.Baud115200)          
+          self.gps_serial.readyRead.connect(self.handle_read_data)
+          
+          if not self.gps_serial.open(QSerialPort.OpenModeFlag.ReadWrite):
+               # VariableManager.instance.set(self.device_name + "_state", False)
+               print("Failed to open base station port")
+               return
+          else:
+               # VariableManager.instance.set(self.device_name + "_state", True)
+               print("- XEncoder opened")
+
+    
     def connect(self):
+        if self.port == None:
+            self.is_connected = False
+            return
         try:
-            self.base_station_serial = serial.Serial(
+            self.gps_serial = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
                 timeout=1,
             )
             self.is_connected = True
+            print("connect successfully")
         except:
             self.is_connected = False
             print("connect to base error")
+    
+    def reconnect(self):
+        print(f"Reconnect ZED-F9P {self.port}")
+        self.connect()
+        
+    def handle_read_data(self):
+        gps_data = self.read_data()
 
     def send_cmd(self, cmd):
-        # self.base_station_serial.write(cmd)
+        self.gps_serial.write(cmd)
         print(" ".join(cmd.hex()[i:i+2].upper()
                        for i in range(0, len(cmd.hex()), 2)))
 
@@ -108,20 +161,20 @@ class BaseController():
         self.send_cmd(ubx_message)
         print(f"Survey-In Mode: Duration={duration}s, Accuracy={accuracy_}mm")
 
-    def set_fixed_mode(self, _ecef_x, _ecef_y, _ecef_z, accuracy_, layer_=0x01):
+    def set_fixed_mode(self, ecef_x_, ecef_y_,ecef_z_, accuracy_, layer_=0x01):
         """
         x,y,z (cm)
         accuracy (mm)
         """
-        ecef_x = _ecef_x * 100
-        ecef_y = _ecef_y * 100
-        ecef_z = _ecef_z * 100
+        ecef_x = ecef_x_
+        ecef_y = ecef_y_
+        ecef_z = ecef_z_
 
         accuracy = int(accuracy_ * 10)
         keys_values = [
             (self.KEY_ID_TMODE3, self.MODE_FIXED),
             (
-                self.KEY_ID_FIXEDaccuracy_,
+                self.KEY_ID_FIXED_ACCURACY,
                 list(accuracy.to_bytes(4, 'little', signed=False))
             ),
             (
@@ -156,18 +209,47 @@ class BaseController():
         ubx_message = self.build_ubx_cfg_valset(keys_values, layer_)
         self.send_cmd(ubx_message)
         print(
-            f"Fixed Mode: X={_ecef_x}cm, Y={_ecef_y}cm, Z={_ecef_z}cm, Accuracy={accuracy}cm")
+            f"Fixed Mode: X={ecef_x_}cm, Y={ecef_y_}cm, Z={ecef_z_}cm, Accuracy={accuracy_}mm")
 
     def _disable(self):
         cmd = [
-            0xB5, 0x62, 0x06, 0x8A, 0x09, 0x00, 0x01, 0x05,
-            0x00, 0x00, 0x01, 0x00, 0x03, 0x20, 0x00, 0xC3, 0xA8
+            0xB5, 0x62 ,0x06 ,0x8A ,0x09 ,0x00 ,0x01 ,0x05 ,0x00 ,0x00 ,0x01 ,0x00 ,0x03 ,0x20 ,0x00 ,0xC3 ,0xA8
         ]
         _cmd = bytes(cmd)
         self.send_cmd(_cmd)
+    
+    def disable_NMEA(self):
+        NMEA_ID_GGA_USB = [0xBD,0x00,0x91,0x20] #0x209100bd
+        
+        # keys_values = [
+        #     self.
+        # ]
 
+    def svin_message(self,value,layer_):
+        if value == 1:
+            keys_values = [
+                (self.MSG_OUT_NAV2_SVIN_KEY_ID, self.SET),  # Enable Survey-in MSG
+            ]
+        else :
+            keys_values = [
+                (self.MSG_OUT_NAV2_SVIN_KEY_ID, self.RESET),  # disable Survey-in MSG
+            ]
+        ubx_message = self.build_ubx_cfg_valset(keys_values, layer_)
+        self.send_cmd(ubx_message)
+    
+    def enable_RTCM_message(self,layer_):
+        keys_values = [
+            (self.MSG_OUT_RTCM3_1005_USB_KEY_ID, self.SET),
+            (self.MSG_OUT_RTCM3_1074_USB_KEY_ID, self.SET), 
+            (self.MSG_OUT_RTCM3_1084_USB_KEY_ID, self.SET), 
+            (self.MSG_OUT_RTCM3_1124_USB_KEY_ID, self.SET), 
+            (self.MSG_OUT_RTCM3_1230_USB_KEY_ID, self.SET), # Enable Survey-in MSG
+        ]
+        ubx_message = self.build_ubx_cfg_valset(keys_values, layer_)
+        self.send_cmd(ubx_message)
+    
     def read_data(self):
-        gps_data = self.base_station_serial.read(1024)
+        gps_data = self.gps_serial.read(1024)
         if gps_data is None:
             return None
         return gps_data
@@ -289,9 +371,9 @@ class BaseController():
         self.is_survey_in_complete = False
         return data_decoded
 
-    def start_survey_in_mode(self):
+    def start_survey_in_mode(self,duration = 300, accuracy_=20):
         self._disable()
-        self.set_survey_in_mode(duration=300, accuracy_=20)
+        self.set_survey_in_mode(duration=duration, accuracy_=accuracy_,layer_=self.RAM+self.FLASH)
         if self.is_connected == False:
             self.exit_survey_signal = True
             return
@@ -324,16 +406,21 @@ class BaseController():
 if __name__ == "__main__":
 
     base_station = BaseController()
-    base_station.set_survey_in_mode(
-        duration=60,
-        accuracy_=100,
-        layer_=base_station.RAM+base_station.FLASH
-    )
-    base_station.set_fixed_mode(
-        accuracy_=100,
-        _ecef_x=123456,
-        _ecef_y=123456,
-        _ecef_z=123456,
-        layer_=base_station.RAM+base_station.FLASH
-    )
-    base_station._disable()
+    # base_station.start_survey_in_mode(duration=60,accuracy_=35000)
+    # time.sleep(0.2)
+    # base_station.svin_message(value=0,layer_=base_station.RAM)
+    # time.sleep(0.2)
+    # base_station.svin_message(value=0,layer_=base_station.FLASH)
+    # time.sleep(0.2)
+    #base_station._disable()
+    # time.sleep(0.5)
+    # base_station.set_fixed_mode(
+    #     ecef_x_=-191916128,
+    #     ecef_y_=582136888,
+    #     ecef_z_=175738897,
+    #     accuracy_=120,
+    #     layer_=base_station.RAM+base_station.FLASH
+    #     )
+    # time.sleep(0.5)
+    # base_station.enable_RTCM_message(base_station.RAM+base_station.FLASH)
+    
