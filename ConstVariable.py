@@ -31,3 +31,6 @@ class BASE_STATION:
     description = "u-blox GNSS receiver"
     tcp_host = "0.0.0.0"
     tcp_port = 8765
+    ecef_x = -191916128
+    ecef_y = 582136888
+    ecef_z = 175738897
